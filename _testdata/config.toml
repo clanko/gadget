@@ -1,0 +1,21 @@
+app_name = "appNameTest"
+
+app_address = "localhost:8080"
+
+app_path = "/path/test"
+
+build_args = ["-gcflags=all=-N -l", "testarg"]
+
+listen_port = 3811
+
+exclude_dirs = ["_testdata/exclude_dir", "_testdata/exclude_dir/included_dir/excluded_dir"]
+
+exclude_files = ["_testdata/watched_dir/excluded_file.go"]
+
+exclude_exts = ["_testdata/watched_dir/extension_test.txt"]
+
+exclude_prefix = ["_testdata/watched_dir/prefixed"]
+
+include_dirs = ["_testdata/exclude_dir/included_dir"]
+
+include_files = ["_testdata/exclude_dir/included_dir/excluded_dir/included_file.go"]
