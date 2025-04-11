@@ -1,4 +1,6 @@
 .idea
 gadget.toml
+gadget.toml.bak
 todos.md
 gadget
+gadget_binary

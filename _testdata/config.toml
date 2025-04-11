@@ -8,13 +8,15 @@ build_args = ["-gcflags=all=-N -l", "testarg"]
 
 listen_port = 3811
 
+listen_host = "127.0.0.1"
+
 exclude_dirs = ["_testdata/exclude_dir", "_testdata/exclude_dir/included_dir/excluded_dir"]
 
 exclude_files = ["_testdata/watched_dir/excluded_file.go"]
 
-exclude_exts = ["_testdata/watched_dir/extension_test.txt"]
+exclude_exts = [".txt"]
 
-exclude_prefix = ["_testdata/watched_dir/prefixed"]
+exclude_prefix = ["prefixed"]
 
 include_dirs = ["_testdata/exclude_dir/included_dir"]
 

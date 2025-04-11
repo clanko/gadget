@@ -17,11 +17,13 @@ type watcher struct {
 	onEvent     func()
 	config      config.Config
 	watchPaths  []string
+	fsWatching  []string
 	pauseEvents bool
 	mu          sync.Mutex
+	isWatching  bool
 }
 
-func NewWatcher(conf config.Config) watcher {
+func newWatcher(conf config.Config) watcher {
 	paths, err := getNestedPaths(conf.Path)
 	if err != nil {
 		panic(cmd.FormatDanger(err.Error()))
@@ -60,30 +62,77 @@ func (w *watcher) watch() {
 		w.watchDir(path)
 	}
 
+	w.isWatching = true
+
 	<-make(chan struct{}) // Block forever
 }
 
+// watcher should ideally watch all directories, and filter out items by Event.Name
 func (w *watcher) isExcluded(path string) bool {
 	// make sure we're not dealing with some nonsense.
 	if path == "" {
 		return true
 	}
 
-	// todo: exclude prefixes and exts
-	//for i := range w.config.ExcludePrefix {
-	//	// check if str begins with
-	//	print("check " + w.config.ExcludePrefix[i])
-	//}
-	//
-	//for i := range w.config.ExcludeExts {
-	//	// check if ends with
-	//	print("check " + w.config.ExcludeExts[i])
-	//}
+	// check if there's a tilde, if so, return isExcluded true
+	if strings.HasSuffix(path, "~") {
+		return true
+	}
 
-	combinedNames := append(w.config.ExcludeDirs, w.config.ExcludeFiles...)
+	// included files will not be excluded
+	for _, file := range w.config.IncludeFiles {
+		if file == path {
+			return false
+		}
+	}
 
-	for i := range combinedNames {
-		if combinedNames[i] == path {
+	// exclude files
+	for _, file := range w.config.ExcludeFiles {
+		if file == path {
+			return true
+		}
+	}
+
+	// now we've gotten to where the path doesn't directly match an include or excluded file.
+	// need to check if path begins with an excluded path,
+	// if it does, then it should be excluded, unless it matches higher in included files
+	excludeMatchChars := 0
+	includeMatchChars := 0
+	for _, excludedDir := range w.config.ExcludeDirs {
+		if excludedDir == path {
+			return true
+		}
+
+		if strings.HasPrefix(path, excludedDir) {
+			excludeMatchChars = len(excludedDir)
+		}
+	}
+
+	for _, includeDir := range w.config.IncludeDirs {
+		if includeDir == path {
+			return false
+		}
+
+		if strings.HasPrefix(path, includeDir) {
+			includeMatchChars = len(includeDir)
+		}
+	}
+
+	if excludeMatchChars > includeMatchChars {
+		return true
+	}
+
+	pathParts := strings.Split(path, "/")
+	fileName := pathParts[len(pathParts)-1]
+
+	for _, prefix := range w.config.ExcludePrefix {
+		if strings.HasPrefix(fileName, prefix) {
+			return true
+		}
+	}
+
+	for _, suffix := range w.config.ExcludeExts {
+		if strings.HasSuffix(fileName, suffix) {
 			return true
 		}
 	}
@@ -92,15 +141,42 @@ func (w *watcher) isExcluded(path string) bool {
 }
 
 func (w *watcher) watchDir(dir string) {
-	if w.isExcluded(dir) == false {
-		err := w.fsWatcher.Add(dir)
+	stat, err := os.Stat(dir)
+	if err != nil {
+		cmd.PrintfDanger("%v", err)
 
-		if verbose > 0 {
-			cmd.PrintfInfo("watching %v", dir)
+		return
+	}
+
+	isWatching := false
+	if !stat.IsDir() {
+		// if not in fsWatching
+		filePath := filepath.Dir(dir)
+		for _, watching := range w.fsWatching {
+			if watching == filePath {
+				isWatching = true
+			}
 		}
+
+		if !isWatching {
+			dir = filepath.Dir(dir)
+		}
+	}
+
+	if !isWatching {
+		err = w.fsWatcher.Add(dir)
+		w.fsWatching = append(w.fsWatching, dir)
 
 		if err != nil {
 			panic(cmd.FormatDanger("%q: %s", dir, err))
+		}
+	}
+
+	if verbose > 0 {
+		if w.isExcluded(dir) {
+			cmd.PrintfWarning("skipping %v", dir)
+		} else {
+			cmd.PrintfInfo("watching %v", dir)
 		}
 	}
 }
@@ -137,7 +213,7 @@ func (w *watcher) watchLoop() {
 				continue
 			}
 
-			if w.isExcluded(e.Name) == false && e.Has(fsnotify.Create) {
+			if e.Has(fsnotify.Create) {
 				// If a directory was created, walk and watch
 				_, err := os.ReadDir(e.Name)
 				if err == nil {
@@ -192,6 +268,19 @@ func (w *watcher) watchLoop() {
 
 			modifiedTimer.Reset(wait)
 		}
+	}
+}
+
+func (w *watcher) endWatch() {
+	if w.isWatching {
+		err := w.fsWatcher.Close()
+		if err != nil {
+			cmd.PrintfDanger("%v", err)
+
+			return
+		}
+
+		w.isWatching = false
 	}
 }
 

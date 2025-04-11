@@ -17,11 +17,15 @@
 # The port to connect debugger. If not set, Gadget will find an available port.
 # listen_port = 3811
 
-# Directories that shouldn't trigger rebuild.
+# The host to connect debugger. If not set, will default to 127.0.0.1
+# listen_host = 127.0.0.1
+
+# Directories that shouldn't trigger rebuild. Hidden directories are automatically excluded from watching.
 # exclude_dirs = []
 
-# Files that shouldn't trigger rebuild. The generated binary is automatically excluded, no need to include it.
-# exclude_files = []
+# Files that shouldn't trigger rebuild. The generated binary is automatically excluded, no need to include it. Hidden files
+#   are not automatically excluded. Add them here.
+# exclude_files = [".gitignore", "README.md"]
 
 # Files with these extensions won't trigger rebuild.
 # exclude_exts = []

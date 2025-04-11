@@ -1,7 +1,9 @@
-package cmd
+package main
 
 import (
 	"bufio"
+	"github.com/clanko/gadget/cmd"
+	"github.com/clanko/gadget/config"
 	"io"
 	"os"
 	"os/exec"
@@ -11,9 +13,12 @@ import (
 var gadgetCliConfigDir = ".clanko-gadget-cli"
 
 type gadgetShell struct {
+	builder *builder
+	watcher *watcher
+	config  config.Config
 }
 
-func NewGadgetShell() gadgetShell {
+func newGadgetShell(b *builder, w *watcher, config config.Config) gadgetShell {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		panic(err)
@@ -26,13 +31,24 @@ func NewGadgetShell() gadgetShell {
 		panic(err)
 	}
 
-	return gadgetShell{}
+	gsh := gadgetShell{}
+	gsh.watcher = w
+	gsh.builder = b
+	gsh.config = config
+
+	return gsh
 }
 
 func (gsh gadgetShell) getCommands() map[string]command {
 	registeredCommands := make(map[string]command)
 
 	registeredCommands["make"] = makeCommand{}
+	registeredCommands["build"] = buildCommand{&gsh}
+	registeredCommands["run"] = runCommand{&gsh}
+	registeredCommands["debug"] = debugCommand{&gsh}
+	registeredCommands["dev"] = devCommand{&gsh}
+	registeredCommands["watch"] = watchCommand{&gsh}
+	registeredCommands["unwatch"] = unwatchCommand{&gsh}
 
 	return registeredCommands
 }
@@ -51,11 +67,11 @@ func (gsh gadgetShell) hasCommand(key string) bool {
 	return false
 }
 
-func (gsh gadgetShell) Run() {
+func (gsh gadgetShell) run() {
 	input := bufio.NewScanner(os.Stdin)
 
 	for {
-		PrintPrompt()
+		printPrompt()
 
 		input.Scan()
 
@@ -65,13 +81,13 @@ func (gsh gadgetShell) Run() {
 			gsh.getCommand(bin).execute(input, args)
 		} else {
 			// If we don't have a command check if it's a valid shell command
-			cmd := exec.Command(bin, args...)
+			command := exec.Command(bin, args...)
 
-			stdout, err := cmd.Output()
+			stdout, err := command.Output()
 			if err != nil {
 				// error executing command. print help message
-				PrintfWarning("Unknown command: " + bin)
-				PrintfWarning("Enter \"help\" for a list of commands")
+				cmd.PrintfWarning("Unknown command: " + bin)
+				cmd.PrintfWarning("Enter \"help\" for a list of commands")
 			} else {
 				println(string(stdout))
 			}
@@ -94,11 +110,11 @@ func (gsh gadgetShell) splitCommand(input string) (string, []string) {
 	return bin, args
 }
 
-func PrintPrompt() {
-	print(FormatSuccess("gadget->: "))
+func printPrompt() {
+	print(cmd.FormatSuccess("gadget->: "))
 }
 
-func PrintReadCloser(readCloser io.ReadCloser, printFunc func(string)) {
+func printReadCloser(readCloser io.ReadCloser, printFunc func(string)) {
 	reader := bufio.NewReader(readCloser)
 	line, err := reader.ReadString('\n')
 	for err == nil {

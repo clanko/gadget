@@ -18,13 +18,13 @@ type builder struct {
 	port          int
 }
 
-func NewBuilder(conf config.Config) builder {
+func newBuilder(conf config.Config) builder {
 	return builder{
 		config: conf,
 	}
 }
 
-func (b *builder) build() {
+func (b *builder) runBuildDebug() {
 	if b.runningBinary != nil && b.runningBinary.Process != nil {
 		cmd.KillPid(b.runningBinary.Process.Pid)
 	}
@@ -100,12 +100,16 @@ func (b *builder) runBinary() {
 		cmd.PrintfSuccess("Running on http://" + b.config.Address)
 	}
 
-	go cmd.PrintReadCloser(stdOut, func(line string) {
+	go printReadCloser(stdOut, func(line string) {
 		print(cmd.FormatSuccess(line))
 	})
-	go cmd.PrintReadCloser(stdErr, func(line string) {
+	go printReadCloser(stdErr, func(line string) {
 		print(cmd.FormatDanger(line))
 	})
+
+	if verbose > 0 {
+		cmd.PrintfInfo("Binary pid: " + strconv.Itoa(b.runningBinary.Process.Pid))
+	}
 
 	// Wait for the initial output
 	time.Sleep(1 * time.Second)
@@ -123,7 +127,7 @@ func (b *builder) runDebugger() {
 
 	debuggerArgs := []string{
 		"attach",
-		fmt.Sprintf("--listen=:%v", b.port),
+		fmt.Sprintf("--listen=%v:%v", b.config.ListenHost, b.port),
 		"--headless=true",
 		"--api-version=2",
 		strconv.Itoa(b.runningBinary.Process.Pid),
@@ -160,15 +164,19 @@ func (b *builder) runDebugger() {
 		cmd.PrintfDanger(err.Error())
 	}
 
-	go cmd.PrintReadCloser(debugStdOut, func(line string) {
+	go printReadCloser(debugStdOut, func(line string) {
 		print(cmd.FormatSuccess(line))
 	})
-	go cmd.PrintReadCloser(debugStdErr, func(line string) {
+	go printReadCloser(debugStdErr, func(line string) {
 		print(cmd.FormatDanger(line))
 	})
 
 	// Wait for the initial output from running the debugger
 	time.Sleep(1 * time.Second)
+
+	if verbose > 0 {
+		cmd.PrintfInfo("Debugger pid: " + strconv.Itoa(b.debugger.Process.Pid))
+	}
 }
 
 func (b *builder) getListenerPort(preferredPort int) (port int, err error) {
@@ -210,5 +218,15 @@ func (b *builder) waitForPortFree() bool {
 				return true
 			}
 		}
+	}
+}
+
+func (b *builder) stopRunningProcesses() {
+	if b.runningBinary != nil && b.runningBinary.Process != nil {
+		cmd.KillPid(b.runningBinary.Process.Pid)
+	}
+
+	if b.debugger != nil && b.debugger.Process != nil {
+		cmd.KillPid(b.debugger.Process.Pid)
 	}
 }

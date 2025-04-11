@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"path/filepath"
 	"reflect"
 	"strconv"
 	"strings"
@@ -14,10 +15,11 @@ var TestConfig = Config{
 	Path:          "/path/test",
 	BuildArgs:     []string{"-gcflags=all=-N -l", "testarg"},
 	ListenPort:    3811,
+	ListenHost:    "127.0.0.1",
 	ExcludeDirs:   []string{"_testdata/exclude_dir", "_testdata/exclude_dir/included_dir/excluded_dir"},
 	ExcludeFiles:  []string{"/path/test/appNameTest", "_testdata/watched_dir/excluded_file.go"},
-	ExcludeExts:   []string{"_testdata/watched_dir/extension_test.txt"},
-	ExcludePrefix: []string{"_testdata/watched_dir/prefixed"},
+	ExcludeExts:   []string{".txt"},
+	ExcludePrefix: []string{"prefixed"},
 	IncludeDirs:   []string{"_testdata/exclude_dir/included_dir"},
 	IncludeFiles:  []string{"_testdata/exclude_dir/included_dir/excluded_dir/included_file.go"},
 }
@@ -70,13 +72,20 @@ func TestGetConfig(t *testing.T) {
 		t.Errorf("GetConfig without config file didn't match the default Config")
 	}
 
-	// GetConfig with an existing config file, returns Config loaded with its values
 	wd, err := os.Getwd()
 	if err != nil {
 		panic(err)
 	}
 
 	loadedConf := GetConfig(wd + "/../_testdata/config.toml")
+
+	rootPath, err := filepath.Abs("../")
+	if err != nil {
+		panic(err)
+	}
+
+	replaceLoadedConfigPath(wd, rootPath, &loadedConf)
+	replaceLoadedConfigPath(wd, rootPath, &TestConfig)
 
 	// Test loaded config has expected values.
 	expectedValues := addableStrings{}
@@ -112,6 +121,11 @@ func TestGetConfig(t *testing.T) {
 	if TestConfig.ListenPort != loadedConf.ListenPort {
 		expectedValues.Add("ListenPort " + strconv.Itoa(TestConfig.ListenPort))
 		unexpectedValues.Add("ListenPort " + strconv.Itoa(loadedConf.ListenPort))
+	}
+
+	if TestConfig.ListenHost != loadedConf.ListenHost {
+		expectedValues.Add("ListenHost " + TestConfig.ListenHost)
+		unexpectedValues.Add("ListenHost " + loadedConf.ListenHost)
 	}
 
 	if reflect.DeepEqual(TestConfig.ExcludeDirs, loadedConf.ExcludeDirs) == false {
@@ -203,5 +217,39 @@ func SetSliceCompareValues(
 
 	if unexpectedArgs != "" {
 		unexpectedValues.Add(property + " unexpected " + unexpectedArgs)
+	}
+}
+
+func replaceLoadedConfigPath(search string, replacement string, config *Config) {
+	for i, path := range config.ExcludeFiles {
+		if string(path[0]) != "/" {
+			config.ExcludeFiles[i] = replacement + "/" + path
+		} else {
+			config.ExcludeFiles[i] = strings.Replace(config.ExcludeFiles[i], search, replacement, 1)
+		}
+	}
+
+	for i, path := range config.ExcludeDirs {
+		if string(path[0]) != "/" {
+			config.ExcludeDirs[i] = replacement + "/" + path
+		} else {
+			config.ExcludeDirs[i] = strings.Replace(config.ExcludeDirs[i], search, replacement, 1)
+		}
+	}
+
+	for i, path := range config.IncludeFiles {
+		if string(path[0]) != "/" {
+			config.IncludeFiles[i] = replacement + "/" + path
+		} else {
+			config.IncludeFiles[i] = strings.Replace(config.IncludeFiles[i], search, replacement, 1)
+		}
+	}
+
+	for i, path := range config.IncludeDirs {
+		if string(path[0]) != "/" {
+			config.IncludeDirs[i] = replacement + "/" + path
+		} else {
+			config.IncludeDirs[i] = strings.Replace(config.IncludeDirs[i], search, replacement, 1)
+		}
 	}
 }

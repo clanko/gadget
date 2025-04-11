@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	GADGET_VERSION = "0.1.0"
+	GADGET_VERSION = "0.1.1"
 )
 
 var (
@@ -24,8 +24,8 @@ var (
 // Gadget CLI
 func main() {
 	goVersion := runtime.Version()
-	cmd.PrintfSuccess("Gadget v: %v", GADGET_VERSION)
-	cmd.PrintfSuccess("Go v: %v", goVersion)
+	cmd.PrintfSuccess("Gadget version: %v", GADGET_VERSION)
+	cmd.PrintfSuccess("Go version: %v", goVersion)
 
 	setFlags()
 
@@ -36,7 +36,7 @@ func main() {
 
 	conf := getConfigWithFlags()
 
-	builder := NewBuilder(conf)
+	builder := newBuilder(conf)
 
 	// in case of panic
 	defer func() {
@@ -49,41 +49,33 @@ func main() {
 	go func() {
 		<-quitChannel
 		if builder.debugger != nil {
+			cmd.PrintfInfo("\nEnding debugger process...")
 			cmd.KillPid(builder.debugger.Process.Pid)
 		}
 
 		if builder.runningBinary != nil {
+			cmd.PrintfInfo("Ending application process...")
 			cmd.KillPid(builder.runningBinary.Process.Pid)
 		}
 
 		os.Exit(0)
 	}()
 
+	watcher := newWatcher(conf)
+
 	if flag.Arg(0) == "dev" {
 		cmd.PrintfInfo("Building...")
-		builder.build()
+
+		builder.runBuildDebug()
 
 		cmd.PrintfInfo("Watching files")
 
-		watcher := NewWatcher(conf)
-
-		watcher.onEvent = func() {
-			// recompile
-			println("\nRebuilding")
-
-			builder.build()
-
-			cmd.PrintPrompt()
-		}
-
-		go func() {
-			watcher.watch()
-		}()
+		runWatcher(&watcher, &builder)
 	}
 
-	gsh := cmd.NewGadgetShell()
+	gsh := newGadgetShell(&builder, &watcher, conf)
 
-	go gsh.Run()
+	go gsh.run()
 
 	cmd.PrintfInfo("^C to exit")
 
@@ -96,7 +88,7 @@ func setFlags() {
 	flag.BoolVar(&help, "help", false, helpUsage)
 	flag.BoolVar(&help, "h", false, helpUsage+" short-hand")
 
-	flag.IntVar(&verbose, "v", 0, "-v 1")
+	flag.IntVar(&verbose, "v", 0, "-v 1\n\tIncrease verbosity")
 
 	flag.StringVar(&appPath, "path", "", "-path /path/to/project")
 
@@ -123,4 +115,19 @@ func getConfigWithFlags() config.Config {
 	}
 
 	return conf
+}
+
+func runWatcher(watcher *watcher, builder *builder) {
+	watcher.onEvent = func() {
+		// recompile
+		println("\nRebuilding")
+
+		builder.runBuildDebug()
+
+		printPrompt()
+	}
+
+	go func() {
+		watcher.watch()
+	}()
 }
